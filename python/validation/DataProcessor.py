@@ -1,4 +1,5 @@
 import numpy as np
+import awkward as ak
 
 # This class processes given data. Methods starting from underscore are not
 # supposed to run by user.
@@ -45,16 +46,13 @@ class DataProcessor:
             self.zToID = layer_id_array
                     
         return self.zToID
-
+    
     def _maxLayerID(self, data):
         if self.maxID is None:
             max_value = 0
 
-            layer_id_array = data.openArray('ticlDumper/clusters;1', 'cluster_layer_id')
-            for event in range(data.nevents):
-                max_candidate = np.max(layer_id_array[event])
-                if max_candidate > max_value:
-                    max_value = max_candidate
-            self.maxID = int(max_value)
+            layer_id_array = ak.flatten(data.openArray('ticlDumper/clusters;1', \
+                                                       'cluster_layer_id'))
+            self.maxID = np.max(layer_id_array)
         
         return 0
