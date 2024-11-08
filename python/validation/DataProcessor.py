@@ -16,37 +16,28 @@ class DataProcessor:
         self.maxID = None
         self.zToID = None
 
-    # data is a DataFile object
+    # data is a DataFile object   
     def zToIDMap(self, data):
-
         # Initialize self.maxID. It is done only while primary call the function
         # for a given object
         self._maxLayerID(data)
 
         # Initialize self.zToID if it isn't
         if self.zToID is None:
+            cluster_z = ak.flatten(np.abs(data.openArray('ticlDumper/clusters;1',\
+                                                         'position_z')))
+            cluster_id = ak.flatten(data.openArray('ticlDumper/clusters;1',\
+                                                   'cluster_layer_id'))
             
-            # Access z-coordinate and id data of clusters.
-            cluster_z = np.abs(data.openArray('ticlDumper/clusters;1', 'position_z'))
-            cluster_id = data.openArray('ticlDumper/clusters;1', 'cluster_layer_id')
+            layer_id_list = []
+            for layer in range(1, self.maxID):
+                max_for_layer = np.max(cluster_z[cluster_id == layer])
+                layer_id_list.append(max_for_layer)
 
-            # Set initial values to output
-            layer_id_array = np.full(self.maxID, 9999)
-            
-            for event in range(data.nevents):
-                
-                # Initialize z-coordinate array per event
-                event_cluster_z = cluster_z[event]
-                for i, z in enumerate(event_cluster_z):
-                    
-                    layer_id = int(cluster_id[event][i]) - 1
-                    
-                    if layer_id_array[layer_id] > z:
-                        layer_id_array[layer_id] = z
-            self.zToID = layer_id_array
-                    
+            self.zToID = np.array(layer_id_list)
+
         return self.zToID
-    
+
     def _maxLayerID(self, data):
         if self.maxID is None:
             max_value = 0
