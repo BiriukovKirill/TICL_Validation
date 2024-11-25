@@ -67,7 +67,7 @@ class Multiplicity(DataProcessor):
             }
         
             config_dict_Tracksters = {
-                'reco': 'ticlDumper/trackstersSuperclusteringDNN;1',
+                'reco': 'ticlDumper/trackstersTiclCandidate;1',
                 'sim': 'ticlDumper/simtrackstersCP;1'
             }
     
@@ -115,7 +115,7 @@ class Combination(Multiplicity):
                 'sim': 'ticlDumper/simtrackstersSC;1'
             },
             'Tracksters': {
-                'reco': 'ticlDumper/trackstersSuperclusteringDNN;1',
+                'reco': 'ticlDumper/trackstersTiclCandidate;1',
                 'sim': 'ticlDumper/simtrackstersCP;1'
             }
         }
@@ -127,9 +127,9 @@ class Combination(Multiplicity):
             'HD' : 'barycenter_eta < 2.02',
             'LD' : 'barycenter_eta >= 2.02'
         }
-        self._makeConfig()
+        self._makeCombConfig()
 
-    def _makeConfig(self):
+    def _makeCombConfig(self):
         if self.config is None:
             self.config = {}
             for opt_key, opt_dict in self.rs_config.items():
@@ -137,13 +137,13 @@ class Combination(Multiplicity):
                 self.config[opt_key] = opt_dict
         return 0
 
-    def getData(self, data):
+    def getCombData(self, data):
         if self.data is None:
-            self._getData(data)
+            self._getCombData(data)
 
         return 0
     
-    def _getData(self, data):
+    def _getCombData(self, data):
 
         data_dict = {}
         options = ['LC', 'Tracksters']
@@ -182,3 +182,161 @@ class Combination(Multiplicity):
             flattened_data = ak.flatten(raw_data)
 
         return flattened_data
+
+class PID(DataProcessor):
+    #Checking PID scores of being an EM-object (sum e and gamma probabilities)
+    def __init__(self):
+        self.data = None
+        self.config = None
+        self._makeConfig()
+
+    def _makeConfig(self):
+        if self.config is None:
+            config_dict_LC = {
+                'reco': 'ticlDumper/trackstersCLUE3DHigh;1',
+                'sim': 'ticlDumper/simtrackstersSC;1'
+            }
+        
+            config_dict_Tracksters = {
+                'reco': 'ticlDumper/trackstersTiclCandidate;1',
+                'sim': 'ticlDumper/simtrackstersCP;1'
+            }
+    
+            self.config = {
+                'LC': config_dict_LC,
+                'Tracksters': config_dict_Tracksters
+            }
+        return 0
+    
+    def getData(self, data):
+        if self.data is None:
+            self._getData(data)
+
+        return 0
+    
+    def _getData(self, data):
+        pdg_dict = {
+            'electron': 0,
+            'photon': 1
+        }
+
+        data_dict = {}
+        for opt_key, opt_dict in self.config.items():
+            if opt_key == 'LC':
+                pass
+            else:
+                raw_data = data.openArray(opt_dict['reco'], 'id_probabilities')
+                flattened_data = ak.flatten(raw_data)
+                raw_true_pdg = data.openArray(opt_dict['sim'], 'id_probabilities')
+                true_pdg = ak.flatten(raw_true_pdg)
+                for pdg_key, pdg_order in pdg_dict.items():
+                    mask = np.array(true_pdg[:, pdg_order]).astype(bool)
+                    data_per_key = flattened_data[:, pdg_order]
+                    data_key = f'{opt_key}_{pdg_key}'
+                    data_dict[data_key] = data_per_key[mask]
+
+        self.data = data_dict
+        return 0
+
+class Association(DataProcessor):
+    #here I'm going to save only best values
+    def __init__(self):
+        self.associations = None
+        self.config = {
+            'LC': {
+                'SC': 'tsCLUE3D_recoToSim_SC',
+                'CP': 'tsCLUE3D_recoToSim_CP'
+            },
+            'Tracksters': {
+                'CP': 'ticlCandidate_recoToSim_CP'
+            } 
+        }
+
+    def getData(self, data):
+        scores = ['', '_score', '_sharedE']
+        
+        data_dict = {}
+
+        for opt_key, opt_dict in self.config.items():
+            for obj, branch_key in opt_dict.items():
+                for score in scores:
+                    Association._extractAssociation(data, data_dict, opt_key, obj,\
+                                                    branch_key, score)
+        
+        self.data = data_dict
+        return 0
+
+    @staticmethod
+    def _extractAssociation(data, data_dict, opt_key='', obj='', branch_key='',\
+                            score=''):
+        if score == '':
+            raw_data = data.openArray('ticlDumper/associations;1', f'{branch_key}{score}')
+            key = f'association_{opt_key}_{obj}{score}'
+            data_dict[key] = raw_data[:,:, 0]
+        else:
+            raw_data = data.openArray('ticlDumper/associations;1', f'{branch_key}{score}')
+            flattened_data = ak.flatten(raw_data)
+            key = f'association_{opt_key}_{obj}{score}'
+            data_dict[key] = flattened_data[:, 0]
+        
+        return 0
+
+        
+class PCAResolution(DataProcessor):
+    # It needs data (class<DataFile>) and associations (class<Association>)
+    def __init__(self):
+        self.data = None
+        self.meta = None
+
+    def _extractNTracksters(self, data, option=''):
+        # option = 'SC', 'CP'
+        return data.openArray(f'ticlDumper/simtracksters{option};1', 'NTracksters')
+
+    def _makeMeta(self, data):
+        options = ['SC', 'CP']
+        meta_dict = {}
+
+        for option in options:
+            meta_dict[option] = self._extractNTracksters(data, option)
+        
+        self.meta = meta_dict
+
+        return 0
+
+    def getData(self, data):
+        if self.data is None:
+            self._getData(self,data)
+
+        return 0
+
+    def _getData(self, data, associations):
+        
+        sc_association = associations.data['association_LC_SC']
+        sim_data = []
+        for label in ['x', 'y', 'z']:
+            sim_data.append(data.openArray('ticlDumper/simtrackstersSC;1',\
+                                            f'eVector0_{label}'))
+        
+        permuted_sim_data = []
+        for s_data in sim_data:
+            permuted_sim_data.append(ak.flatten(s_data[sc_association]))
+        permuted_sim_data = np.transpose(permuted_sim_data)
+
+        reco_data = []
+        for label in ['x', 'y', 'z']:
+            r_data = data.openArray('ticlDumper/trackstersCLUE3DHigh;1', f'eVector0_{label}')
+            reco_data.append(ak.flatten(r_data))
+        reco_data = np.transpose(reco_data)
+        
+        norm_sim = np.linalg.norm(sim_data, axis=1)
+        norm_reco = np.linalg.norm(reco_data, axis=1)
+        dot_prod = np.array([np.dot(s_data, r_data) for s_data, r_data in zip(sim_data, reco_data)])
+        theta = np.acos(dot_prod/(norm_sim*norm_reco))
+
+        self.data = {
+            'LC_SC': theta
+        }
+    
+        return 0
+    
+    
