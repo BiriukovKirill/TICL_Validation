@@ -51,8 +51,17 @@ class DataFile:
     # initialization
     def _nEvents(self):
         if self.nevents is None:
-            n_events = len(self.openArray('ticlDumper/trackstersCLUE3DHigh;1',\
-                                       'NTracksters'))
+            branch_name = self._isLeaf(self.branches)
+            key = self._isLeaf(self.getBranchKeys(branch_name))
+            n_events = len(self.openArray(branch_name, key))
             self.nevents = n_events
 
         return self.nevents
+    
+    # returns a leaf of a tree to compute number of events
+    def _isLeaf(self, l=[]):
+        for element in l:
+            bool_map = [element.split(';')[0] in el for el in l]
+            if sum(bool_map) == 1:
+                break
+        return element
