@@ -394,6 +394,10 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
+# Plots 
+*.svg
+*.png
+
 # JetBrains Rider
 *.sln.iml
 python/classes/DataFile.py
